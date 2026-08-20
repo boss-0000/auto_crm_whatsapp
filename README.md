@@ -1,3 +1,14 @@
+---
+title: AutoCRM WhatsApp
+emoji: 🚗
+colorFrom: green
+colorTo: gray
+sdk: docker
+app_port: 7860
+pinned: false
+short_description: Atención automatizada por WhatsApp para servicios automotrices
+---
+
 # AutoCRM WhatsApp — demo
 
 Plataforma de atención automatizada sobre WhatsApp Business API para una

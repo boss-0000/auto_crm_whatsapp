@@ -116,6 +116,37 @@ def api_chat_stream(mensaje: str = Query(..., max_length=MAX_MENSAJE),
                                       "X-Accel-Buffering": "no"})
 
 
+@app.post("/api/chat")
+def api_chat(datos: dict = Body(...)) -> dict[str, object]:
+    """
+    Version sin streaming del mismo pipeline.
+
+    Existe como red de seguridad: algunos proxies bufferean SSE y el chat se
+    quedaria colgado. La interfaz usa el stream y cae aca si falla.
+    """
+    mensaje = str(datos.get("mensaje", ""))[:MAX_MENSAJE].strip()
+    if not mensaje:
+        return JSONResponse({"error": "mensaje vacio"}, status_code=400)
+
+    conv = sesion(datos.get("conversacion_id"))
+    recortar(conv)
+    etapas: list[dict] = []
+    final: dict = {}
+    for ev in procesar_stream(conv, mensaje):
+        if ev["evento"] == "etapa":
+            etapas.append(ev)
+        elif ev["evento"] == "final":
+            final = ev["datos"]
+    final["conversacion_id"] = conv.id
+    final["etapas"] = etapas
+    final["payload"] = {
+        "real": False,
+        "titulo": f"Estructura de referencia · Cloud API {whatsapp.VERSION_API}",
+        "cuerpo": whatsapp.payload_referencia(mensaje),
+    }
+    return final
+
+
 @app.post("/api/reset")
 def api_reset(conversacion_id: str | None = Query(None)) -> dict[str, str]:
     if conversacion_id:

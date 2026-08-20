@@ -610,6 +610,7 @@ function enviar(e){
 }
 
 function mandar(texto){
+  let recibioFinal = false;
   ocupado = true;
   $('#btn-enviar').disabled = true;
   $('#estado-chat').textContent = 'escribiendo…';
@@ -627,6 +628,7 @@ function mandar(texto){
     if(ev.evento === 'inicio'){ convId = ev.conversacion_id; }
     else if(ev.evento === 'etapa'){ agregarEtapa(ev); }
     else if(ev.evento === 'final'){
+      recibioFinal = true;
       const d = ev.datos;
       convId = d.conversacion_id;
       escribiendo(false);
@@ -637,12 +639,39 @@ function mandar(texto){
       pintarPayload(d.payload);
       cerrar(es);
     } else if(ev.evento === 'error'){
+      recibioFinal = true;
       escribiendo(false);
       burbuja('Se cortó la conexión. Probá de nuevo.', 'ent');
       cerrar(es);
     }
   };
-  es.onerror = () => { escribiendo(false); cerrar(es); };
+  // Si el proxy bufferea el SSE nunca llega 'final': se reintenta sin streaming.
+  es.onerror = () => { if(!recibioFinal){ cerrar(es); respaldoSinStream(texto); }
+                       else { cerrar(es); } };
+}
+
+async function respaldoSinStream(texto){
+  try{
+    const r = await (await fetch('/api/chat', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({mensaje: texto, conversacion_id: convId})
+    })).json();
+    escribiendo(false);
+    convId = r.conversacion_id;
+    (r.etapas || []).forEach(agregarEtapa);
+    burbuja(r.respuesta.texto, 'ent');
+    pintarFicha(r.lead);
+    pintarPresupuesto(r.presupuesto);
+    pintarSello(r.respuesta);
+    pintarPayload(r.payload);
+  } catch(err){
+    escribiendo(false);
+    burbuja('Se cortó la conexión. Probá de nuevo.', 'ent');
+  } finally {
+    ocupado = false;
+    $('#btn-enviar').disabled = false;
+    $('#estado-chat').textContent = 'en línea';
+  }
 }
 
 function cerrar(es){

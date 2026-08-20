@@ -1,0 +1,10 @@
+.git
+.gitignore
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+# Se regeneran en el build con scripts.seed
+data/catalog.db
+data/radar.json
