@@ -16,12 +16,10 @@ import re
 from dataclasses import dataclass, asdict
 from typing import Any
 
-from . import db
+from . import db, llm
 
 SECTORES = ["VENTAS", "VERIFICACIONES", "SERVICIO_TECNICO", "OTRO"]
 INTENCIONES = ["PRESUPUESTO", "TURNO", "CONSULTA", "ESCALAR", "SALUDO", "CIERRE"]
-
-MODELO_EXTRACCION = os.getenv("MODEL_EXTRACT", "claude-haiku-4-5")
 
 SISTEMA = """Sos el clasificador de un taller y centro de verificacion automotor \
 en Argentina. Recibis un mensaje de WhatsApp de un cliente y devolves datos \
@@ -169,15 +167,10 @@ def extraer_por_reglas(mensaje: str, previo: Extraccion | None = None) -> Extrac
 # --------------------------------------------------------------------------
 # Extraccion con LLM
 # --------------------------------------------------------------------------
-def _cliente():
-    from anthropic import Anthropic
-    return Anthropic()
-
-
 def extraer(mensaje: str, historial: list[dict[str, str]] | None = None,
             previo: Extraccion | None = None) -> Extraccion:
-    """Clasifica y extrae. Cae a reglas si no hay key o la llamada falla."""
-    if not os.getenv("ANTHROPIC_API_KEY"):
+    """Clasifica y extrae. Cae a reglas si no hay proveedor o si falla."""
+    if llm.proveedor() == "ninguno":
         return extraer_por_reglas(mensaje, previo)
 
     contexto = ""
@@ -188,24 +181,12 @@ def extraer(mensaje: str, historial: list[dict[str, str]] | None = None,
     prompt = (f"Catalogo de servicios disponibles:\n{_catalogo_para_prompt()}"
               f"{contexto}\n\nMensaje nuevo del cliente:\n{mensaje}")
 
-    try:
-        r = _cliente().messages.create(
-            model=MODELO_EXTRACCION,
-            max_tokens=600,
-            system=[{"type": "text", "text": SISTEMA,
-                     "cache_control": {"type": "ephemeral"}}],
-            output_config={"format": {"type": "json_schema", "schema": _esquema()}},
-            messages=[{"role": "user", "content": prompt}],
-        )
-        if r.stop_reason == "refusal":
-            return extraer_por_reglas(mensaje, previo)
-        crudo = next(b.text for b in r.content if b.type == "text")
-        datos = json.loads(crudo)
-    except Exception:
+    datos = llm.generar_json(SISTEMA, prompt, _esquema())
+    if not datos:
         return extraer_por_reglas(mensaje, previo)
 
-    e = Extraccion(motor="llm", **{k: datos.get(k, v)
-                                   for k, v in Extraccion().dict().items()
+    base = Extraccion().dict()
+    e = Extraccion(motor="llm", **{k: datos.get(k, v) for k, v in base.items()
                                    if k != "motor"})
     # El modelo puede omitir datos que ya estaban en la conversacion.
     if previo:
@@ -214,4 +195,6 @@ def extraer(mensaje: str, historial: list[dict[str, str]] | None = None,
         e.anio = e.anio or previo.anio
         e.km = e.km or previo.km
         e.patente = e.patente or previo.patente
+        if e.sector == "OTRO":
+            e.sector = previo.sector
     return e

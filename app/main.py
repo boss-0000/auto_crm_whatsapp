@@ -19,7 +19,7 @@ from fastapi.responses import (FileResponse, JSONResponse, PlainTextResponse,
                                Response, StreamingResponse)
 from fastapi.staticfiles import StaticFiles
 
-from . import db, quotes, whatsapp
+from . import db, llm, quotes, whatsapp
 from .agent import Conversacion, procesar, procesar_stream
 from .nlu import Extraccion
 
@@ -64,7 +64,7 @@ def recortar(conv: Conversacion) -> None:
 def healthz() -> dict[str, object]:
     """Ping del uptime monitor: mantiene vivo el free tier de Render."""
     return {"ok": True, "registros": db.radar()["total_registros"],
-            "sesiones": len(_SESIONES)}
+            "sesiones": len(_SESIONES), "llm": llm.estado()}
 
 
 @app.get("/api/radar")

@@ -17,10 +17,9 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
-from . import quotes, turnos
+from . import llm, quotes, turnos
 from .nlu import Extraccion
 
-MODELO_REDACCION = os.getenv("MODEL_COMPOSE", "claude-opus-5")
 UMBRAL_IMPORTE = 1000
 
 SISTEMA = """Sos el asistente de WhatsApp de un taller y centro de verificacion \
@@ -148,11 +147,6 @@ def plantilla(tipo: str, ext: Extraccion,
 # --------------------------------------------------------------------------
 # Redaccion
 # --------------------------------------------------------------------------
-def _cliente():
-    from anthropic import Anthropic
-    return Anthropic()
-
-
 def _datos_para_llm(tipo: str, ext: Extraccion,
                     presupuesto: quotes.Presupuesto | None,
                     slots: list[dict[str, str]] | None) -> str:
@@ -186,7 +180,7 @@ def responder(tipo: str, ext: Extraccion,
     """Redacta la respuesta y la valida. Nunca devuelve un precio inventado."""
     respaldo = plantilla(tipo, ext, presupuesto, slots)
 
-    if not os.getenv("ANTHROPIC_API_KEY"):
+    if llm.proveedor() == "ninguno":
         return Respuesta(respaldo, tipo, motor="plantilla", validacion="sin_validar")
 
     contexto = ""
@@ -197,20 +191,8 @@ def responder(tipo: str, ext: Extraccion,
     prompt = (f"DATOS:\n{_datos_para_llm(tipo, ext, presupuesto, slots)}"
               f"{contexto}\n\nRedacta el proximo mensaje del asistente.")
 
-    try:
-        r = _cliente().messages.create(
-            model=MODELO_REDACCION,
-            max_tokens=2000,
-            output_config={"effort": "low"},
-            system=[{"type": "text", "text": SISTEMA,
-                     "cache_control": {"type": "ephemeral"}}],
-            messages=[{"role": "user", "content": prompt}],
-        )
-        if r.stop_reason == "refusal":
-            return Respuesta(respaldo, tipo, motor="plantilla",
-                             validacion="sin_validar")
-        texto = "\n".join(b.text for b in r.content if b.type == "text").strip()
-    except Exception:
+    texto = llm.generar_texto(SISTEMA, prompt, max_tokens=1200)
+    if not texto:
         return Respuesta(respaldo, tipo, motor="plantilla", validacion="sin_validar")
 
     if not texto:
