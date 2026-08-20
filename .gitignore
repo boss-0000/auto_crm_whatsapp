@@ -1,0 +1,11 @@
+__pycache__/
+*.pyc
+.env
+.venv/
+venv/
+
+# Artefactos generados por `python -m scripts.seed`.
+# render.yaml los regenera en cada build; si el seed falla, el build falla
+# y el deploy no arranca, asi que versionarlos no aporta resiliencia.
+data/catalog.db
+data/radar.json
