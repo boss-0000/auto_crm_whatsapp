@@ -86,13 +86,17 @@ for (let i = 0; i < TOTAL; i++) {
 
   // Último service: pico en los primeros meses y cola larga de abandonados.
   let ultimoService = null;
-  if (rnd() < 0.88) ultimoService = iso(sumarDias(HOY, -Math.round(triangular(10, 1000, 90))));
+  let ultimoServiceKm = null;
+  if (rnd() < 0.88) {
+    ultimoService = iso(sumarDias(HOY, -Math.round(triangular(10, 1000, 90))));
+    ultimoServiceKm = Math.max(km - entre(1_200, 26_000), 500);
+  }
 
   flota.push({
     cliente: `${elegir(NOMBRES)} ${elegir(APELLIDOS)}`,
     telefono: `549${elegir(["11", "221", "261", "341", "351", "381"])}${entre(1_000_000, 9_999_999)}`,
     marca, modelo, anio, patente: patente(anio), km,
-    vtvVence: vtv, ultimoService,
+    vtvVence: vtv, ultimoService, ultimoServiceKm,
     verificacionPendiente: rnd() < 0.06,
   });
 }
@@ -124,10 +128,18 @@ const bloque = (clave, titulo, cantidad, detalle, porque) => ({
 
 const segmentos = [
   bloque("vtv", "VTV venciendo en los próximos 60 días", vtv60.length,
-    `${miles(vtvVencidas)} ya vencidas, además de estas`,
+    // Las ya vencidas se dejan fuera del cálculo a propósito: muchas ya se
+    // hicieron en otro lado. Contar sólo la ventana de 60 días mantiene la
+    // estimación por debajo de lo real.
+    `Hay ${miles(vtvVencidas)} ya vencidas que no se cuentan acá`,
     "Es obligatoria y tiene fecha: la hacen sí o sí en algún lado"),
   bloque("service", "Sin service hace más de 12 meses", serviceVencido,
-    `${miles(flota.filter((v) => v.ultimoService && v.km > 10_000).length)} con más de 10.000 km recorridos`,
+    // Subconjunto del propio segmento: los que además pasaron los 10.000 km
+    // desde el último service. Un número mayor que el titular se leería como
+    // un error, aunque midiera otro criterio.
+    `${miles(flota.filter((v) => (!v.ultimoService || v.ultimoService < hace12m)
+      && v.ultimoServiceKm !== null && v.km - v.ultimoServiceKm > 10_000).length)}`
+      + " de ellos además pasaron los 10.000 km",
     "Recordatorio sin urgencia legal: la conversión es baja por definición"),
   bloque("verificacion", "Verificación policial pendiente", verificacion,
     "Trámites iniciados sin turno asignado",
